@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import time
@@ -14,7 +15,7 @@ my_api_key=os.getenv("GROQ_API_KEY")
 if not my_api_key:
     raise ValueError("API key kaha hai bhai")
 
-client=Groq(api_key=my_api_key)
+client=Groq(api_key=my_api_key, max_retries=6)  # retries 429s using the server's retry-after
 model = "openai/gpt-oss-120b"
 
 
@@ -80,44 +81,13 @@ If information for a list is missing, return an empty list.
 Do not invent information.
 """
 
-user_prompt = f"""
-Analyze the following job description:
-
-{job_description}
-"""
-message_system={
-    "role" : "system",
-    "content" : system_prompt
-}
-message_user={
-    "role" : "user",
-    "content" : user_prompt
-}
-response_format={
-    "type" : "json_object"
-}
-
-
-messages=[message_system, message_user]
-
-response=client.chat.completions.create(model=model, messages=messages, response_format=response_format)
-
-
-answer=response.choices[0].message.content
-
-raw_json=answer
-# print(raw_json)
-
-
-
-import json
-job_data=json.loads(raw_json)
-
-job = JobD(**job_data)
-
-print(job.minimum_experience)
-print(job.education_requirements)
-
+def parse_job(jd_text):
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Analyze the following job description:\n\n{jd_text}"},
+    ]
+    response = client.chat.completions.create(model=model, messages=messages, response_format={"type": "json_object"})
+    return JobD(**json.loads(response.choices[0].message.content))
 
 
 #parse real
@@ -278,55 +248,61 @@ def read_resume(file_path):
 
 
 # lets do it now
-resume_folder = Path("resumes")
-all_results=[]
-for file_path in resume_folder.iterdir():
-    #C:\Users\Pratyush\padho_with_pratyush\week1\day5\resumes\abhay resume new - Abhay Singh.pdf
-    if file_path.suffix.lower() not in [".pdf", ".docx"]:
-        continue
-    print("\nProcessing:", file_path.name)
-    resume_text = read_resume(file_path)
-    parsed_resume=parse_resume(resume_text) # llm call1
-    time.sleep(5)
-    result = final_score(job, parsed_resume) #llm caLL2
-    #score and details
-    #acount chtgpt
-    # request bhejna shhur krega millions
-    #chattgot server jam ho jayega
-    time.sleep(5)
-    print("Score:", result.score)
-    all_results.append({
-        "name": parsed_resume.name,
-        "score": result.score,
-        "details": result.details
-    })
-all_results.sort(
-    key=lambda candidate: candidate["score"],
-    reverse=True
-)
-top_2 = all_results[:2]
-worst_2 = all_results[-2:]
-
-
-print("TOP 2 CANDIDATES")
-for candidate in top_2:
-
-    print(
-        candidate["name"],
-        "-",
-        candidate["score"],
-        "%"
+def main():
+    job = parse_job(job_description)
+    resume_folder = Path("resumes")
+    all_results=[]
+    for file_path in resume_folder.iterdir():
+        #C:\Users\Pratyush\padho_with_pratyush\week1\day5\resumes\abhay resume new - Abhay Singh.pdf
+        if file_path.suffix.lower() not in [".pdf", ".docx"]:
+            continue
+        print("\nProcessing:", file_path.name)
+        resume_text = read_resume(file_path)
+        parsed_resume=parse_resume(resume_text) # llm call1
+        time.sleep(5)
+        result = final_score(job, parsed_resume) #llm caLL2
+        #score and details
+        #acount chtgpt
+        # request bhejna shhur krega millions
+        #chattgot server jam ho jayega
+        time.sleep(5)
+        print("Score:", result.score)
+        all_results.append({
+            "name": parsed_resume.name,
+            "score": result.score,
+            "details": result.details
+        })
+    all_results.sort(
+        key=lambda candidate: candidate["score"],
+        reverse=True
     )
+    top_2 = all_results[:2]
+    worst_2 = all_results[-2:]
 
-    print(candidate["details"])
 
-print("LOWEST 2 CANDIDATES")
-for candidate in worst_2:
+    print("TOP 2 CANDIDATES")
+    for candidate in top_2:
 
-    print(
-        candidate["name"],
-        "-",
-        candidate["score"],
-        "%"
-    )
-    print(candidate["details"])
+        print(
+            candidate["name"],
+            "-",
+            candidate["score"],
+            "%"
+        )
+
+        print(candidate["details"])
+
+    print("LOWEST 2 CANDIDATES")
+    for candidate in worst_2:
+
+        print(
+            candidate["name"],
+            "-",
+            candidate["score"],
+            "%"
+        )
+        print(candidate["details"])
+
+
+if __name__ == "__main__":
+    main()
